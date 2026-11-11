@@ -205,12 +205,15 @@ def make_figure(panel_records, settings):
                        alpha=settings['gap_alpha'], zorder=-2)
 
         ax.set_title(mathtext_label(p['title']), fontsize=settings['title_size'], pad=settings['title_pad'])
-        ax.set_ylim(settings['ymin'], settings['ymax'])
-        ax.set_xlim(0, 1) if settings['normalize_x'] else ax.set_xlim(xmin, xmax)
+        _ = ax.set_ylim(settings['ymin'], settings['ymax'])
+        if settings['normalize_x']:
+            _ = ax.set_xlim(0, 1)
+        else:
+            _ = ax.set_xlim(xmin, xmax)
 
         if tick_positions and len(tick_positions) == len(tick_labels):
-            ax.set_xticks(tick_positions)
-            ax.set_xticklabels(tick_labels, fontsize=settings['tick_size'])
+            _ = ax.set_xticks(tick_positions)
+            _ = ax.set_xticklabels(tick_labels, fontsize=settings['tick_size'])
         ax.tick_params(axis='y', labelsize=settings['tick_size'], direction=settings['tick_direction'])
         ax.tick_params(axis='x', direction=settings['tick_direction'])
         for spine in ax.spines.values():
@@ -584,4 +587,5 @@ with sc2:
         except Exception as exc:
             st.error(str(exc))
 
-st.info('Uwaga: nie zapisuj GitHub tokena w kodzie aplikacji ani w repozytorium. W Streamlit Community Cloud najlepiej dodać go jako Secret i dopiero wtedy rozszerzyć aplikację o automatyczny zapis bez ręcznego wpisywania tokena.')
+st.info('Uwaga: Zapisując nowy projekt nadaj mu nową nazwę w zakładce " Projekt: zapisz / wczytaj ustawienia i dane" u góry strony.')
+
