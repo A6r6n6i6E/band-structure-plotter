@@ -305,18 +305,24 @@ with st.expander('💾 Projekt: zapisz / wczytaj ustawienia i dane', expanded=Fa
 
     projects = st.session_state.get('github_projects', [])
     selected_gist_id = ''
+    selected_project_name = ''
     if projects:
-        labels = [f"{p['name']}  |  {p['updated_at'][:10]}  |  {p['id'][:8]}…" for p in projects]
-        selected_label = st.selectbox('Zapisane projekty na GitHub', labels)
-        selected = projects[labels.index(selected_label)]
-        selected_gist_id = selected['id']
-        st.caption(f"Wybrany Gist: {selected['id']}")
-        if selected.get('url'):
-            st.markdown(f"[Otwórz Gist na GitHub]({selected['url']})")
+        labels = ['➕ Utwórz nowy projekt'] + [
+            f"{p['name']}  |  {p['updated_at'][:10]}  |  {p['id'][:8]}…" for p in projects
+        ]
+        selected_label = st.selectbox('Zapisane projekty na GitHub', labels, index=0)
+        if selected_label != '➕ Utwórz nowy projekt':
+            selected = projects[labels.index(selected_label) - 1]
+            selected_gist_id = selected['id']
+            selected_project_name = selected['name']
+            st.caption(f"Wybrany Gist: {selected['id']}")
+            if selected.get('url'):
+                st.markdown(f"[Otwórz Gist na GitHub]({selected['url']})")
 
     gist_id = st.text_input(
-        'ID Gista (opcjonalnie: ręcznie, do wczytania lub nadpisania)',
-        value=st.session_state.get('gist_id', ''),
+        'ID Gista (opcjonalnie: ręcznie, tylko do wczytania)',
+        value='',
+        help='To pole służy tylko do ręcznego wczytania Gista. Zapis nie używa zapamiętanego ID z poprzedniej sesji.',
     )
     active_gist_id = selected_gist_id or gist_id.strip()
     c1, c2 = st.columns(2)
@@ -573,16 +579,19 @@ with sc2:
                 'public': False,
                 'files': {'bandplot_project.json': {'content': project_bytes.decode('utf-8')}},
             }
-            save_gist_id = selected_gist_id or gist_id.strip()
-            if save_gist_id:
-                result = gist_api('PATCH', f'https://api.github.com/gists/{save_gist_id}', gh_token, payload)
+            # Nadpisujemy tylko projekt jawnie wybrany z listy.
+            # Wybór "Utwórz nowy projekt" zawsze tworzy osobny Gist,
+            # niezależnie od poprzednio zapisanych/wczytanych projektów.
+            if selected_gist_id:
+                result = gist_api('PATCH', f'https://api.github.com/gists/{selected_gist_id}', gh_token, payload)
+                action_msg = 'Nadpisano wybrany projekt'
             else:
                 result = gist_api('POST', 'https://api.github.com/gists', gh_token, payload)
+                action_msg = 'Utworzono nowy projekt'
             new_id = result['id']
-            st.session_state['gist_id'] = new_id
             st.session_state['project_name'] = project_name.strip() or 'Mój projekt pasmowy'
             st.session_state.pop('github_projects', None)
-            st.success(f'Zapisano. ID Gista: {new_id}. Odśwież listę projektów, aby zobaczyć aktualny wpis.')
+            st.success(f'{action_msg}. ID Gista: {new_id}. Odśwież listę projektów, aby zobaczyć aktualny wpis.')
             st.code(new_id)
         except Exception as exc:
             st.error(str(exc))
