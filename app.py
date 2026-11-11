@@ -142,13 +142,68 @@ def gist_api(method, url, token, payload=None):
     data = None if payload is None else json.dumps(payload).encode('utf-8')
     req = request.Request(url, data=data, headers=headers, method=method)
     try:
-        with request.urlopen(req, timeout=15) as resp:
+        with request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode('utf-8'))
     except error.HTTPError as exc:
         msg = exc.read().decode('utf-8', errors='replace')
         raise RuntimeError(f'GitHub API: HTTP {exc.code}: {msg[:500]}') from exc
     except error.URLError as exc:
         raise RuntimeError(f'Nie można połączyć się z GitHub: {exc.reason}') from exc
+
+
+def fetch_text(url, token=''):
+    """Pobierz pełną zawartość tekstową, np. z raw_url Gista."""
+    headers = {'User-Agent': 'BandStructurePlotter'}
+    if token:
+        headers['Authorization'] = f'Bearer {token.strip()}'
+    req = request.Request(url, headers=headers, method='GET')
+    try:
+        with request.urlopen(req, timeout=30) as resp:
+            return resp.read().decode('utf-8')
+    except error.HTTPError as exc:
+        msg = exc.read().decode('utf-8', errors='replace')
+        raise RuntimeError(f'GitHub raw: HTTP {exc.code}: {msg[:500]}') from exc
+    except error.URLError as exc:
+        raise RuntimeError(f'Nie można pobrać pełnej zawartości Gista: {exc.reason}') from exc
+
+
+def load_project_from_gist(gist_id, token):
+    """Wczytaj projekt z Gista, także gdy GitHub ucina pole `content`."""
+    data = gist_api('GET', f'https://api.github.com/gists/{gist_id}', token)
+    files = data.get('files', {})
+    file_info = files.get('bandplot_project.json')
+    if not file_info:
+        raise ValueError('Gist nie zawiera pliku bandplot_project.json')
+
+    content = file_info.get('content')
+    is_truncated = bool(file_info.get('truncated'))
+    raw_url = file_info.get('raw_url')
+
+    if is_truncated or not content:
+        if not raw_url:
+            raise ValueError('GitHub zwrócił uciętą zawartość Gista bez raw_url.')
+        content = fetch_text(raw_url, token)
+
+    try:
+        project = json.loads(content)
+    except json.JSONDecodeError as exc:
+        # Dodatkowa próba przez raw_url. Pomaga również dla niektórych
+        # istniejących Gistów, których pole content zostało ucięte.
+        if raw_url:
+            full_content = fetch_text(raw_url, token)
+            try:
+                project = json.loads(full_content)
+            except json.JSONDecodeError as exc2:
+                raise ValueError(
+                    f'Projekt w Gist nie jest poprawnym JSON-em: linia {exc2.lineno}, kolumna {exc2.colno}. '
+                    'Możliwe, że wcześniejszy zapis został przerwany lub uszkodzony.'
+                ) from exc2
+        else:
+            raise ValueError(
+                f'Projekt w Gist nie jest poprawnym JSON-em: linia {exc.lineno}, kolumna {exc.colno}.'
+            ) from exc
+
+    return project, data
 
 
 def make_figure(panel_records, settings):
@@ -328,11 +383,7 @@ with st.expander('💾 Projekt: zapisz / wczytaj ustawienia i dane', expanded=Fa
     c1, c2 = st.columns(2)
     if c1.button('Wczytaj wybrany projekt z GitHub', disabled=not active_gist_id):
         try:
-            data = gist_api('GET', f'https://api.github.com/gists/{active_gist_id}', gh_token)
-            files = data.get('files', {})
-            if 'bandplot_project.json' not in files:
-                raise ValueError('Gist nie zawiera pliku bandplot_project.json')
-            project = json.loads(files['bandplot_project.json']['content'])
+            project, data = load_project_from_gist(active_gist_id, gh_token)
             load_project_dict(project)
             st.session_state['gist_id'] = active_gist_id
             desc = data.get('description') or ''
@@ -597,4 +648,3 @@ with sc2:
             st.error(str(exc))
 
 st.info('Uwaga: Zapisując nowy projekt nadaj mu nową nazwę w zakładce " Projekt: zapisz / wczytaj ustawienia i dane" u góry strony.')
-
