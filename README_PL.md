@@ -54,3 +54,13 @@ Najprościej:
 **GitHub Gist**: aplikacja może zapisać ten sam projekt jako prywatny Gist. Potrzebny jest GitHub Personal Access Token z uprawnieniem do Gistów. Token nie jest zapisywany przez aplikację w projekcie.
 
 Nie należy wpisywać tokena bezpośrednio do kodu ani commitować go do repozytorium. Przy wdrożeniu na Streamlit Community Cloud najlepiej trzymać token w Streamlit Secrets.
+
+## Domyslne style v3
+- noSOC: czarna linia ciagla, grubosc 0.8
+- SOC: czerwona linia przerywana, grubosc 0.8
+
+## GitHub Gist - lista projektow
+W sekcji projektu podaj token GitHub i kliknij "Odswiez liste projektow z GitHub". Aplikacja pokazuje Gisty zawierajace plik `bandplot_project.json`, ich nazwe, date aktualizacji i ID. Wybrany projekt mozna od razu wczytac lub nadpisac.
+
+## Streamlit Community Cloud
+Repozytorium powinno zawierac co najmniej `app.py` oraz `requirements.txt`. Token GitHub dodaj jako sekret `GITHUB_TOKEN` w ustawieniach aplikacji Streamlit; nie commituj `secrets.toml` ani tokena do GitHuba.

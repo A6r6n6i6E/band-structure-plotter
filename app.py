@@ -13,7 +13,7 @@ import streamlit as st
 from matplotlib.lines import Line2D
 
 st.set_page_config(page_title='Band Structure Plotter', layout='wide')
-PROJECT_VERSION = 2
+PROJECT_VERSION = 3
 
 
 def parse_gnu_bytes(data: bytes):
@@ -89,15 +89,15 @@ def default_panel_config(name, order):
         'title': Path(name).stem,
         'energy_ref_base': 0.0,
         'energy_ref_soc': 0.0,
-        'base_color': '#377EB8',
-        'base_line_width': 1.2,
+        'base_color': '#000000',
+        'base_line_width': 0.8,
         'base_alpha': 1.0,
-        'base_style': '--',
+        'base_style': '-',
         'base_label': 'noSOC',
-        'soc_color': '#FF6677',
-        'soc_line_width': 1.5,
+        'soc_color': '#D62728',
+        'soc_line_width': 0.8,
         'soc_alpha': 1.0,
-        'soc_style': '-',
+        'soc_style': '--',
         'soc_label': 'SOC',
     }
 
@@ -262,18 +262,73 @@ with st.expander('💾 Projekt: zapisz / wczytaj ustawienia i dane', expanded=Fa
             st.error(f'Nie udało się wczytać projektu: {exc}')
 
     st.markdown('**GitHub Gist (opcjonalnie)**')
-    gh_token = st.text_input('GitHub Personal Access Token', type='password', help='Token jest używany tylko do bieżącego wywołania GitHub API i nie jest zapisywany w projekcie.')
-    gist_id = st.text_input('ID istniejącego Gista (do wczytania lub nadpisania)', value=st.session_state.get('gist_id', ''))
-    c1, c2 = st.columns(2)
-    if c1.button('Wczytaj z GitHub Gist', disabled=not gist_id.strip()):
+    secret_token = ''
+    try:
+        secret_token = str(st.secrets.get('GITHUB_TOKEN', ''))
+    except Exception:
+        secret_token = ''
+    gh_token = st.text_input(
+        'GitHub Personal Access Token',
+        value=secret_token,
+        type='password',
+        help='Możesz wpisać token ręcznie albo ustawić GITHUB_TOKEN w Streamlit Secrets. Token nie jest zapisywany w projekcie.',
+    )
+    project_name = st.text_input('Nazwa projektu na GitHub', value=st.session_state.get('project_name', 'Mój projekt pasmowy'))
+
+    lc1, lc2 = st.columns([1, 2])
+    if lc1.button('Odśwież listę projektów z GitHub', disabled=not gh_token.strip()):
         try:
-            data = gist_api('GET', f'https://api.github.com/gists/{gist_id.strip()}', gh_token)
+            gists = gist_api('GET', 'https://api.github.com/gists?per_page=100', gh_token)
+            projects = []
+            for item in gists:
+                files = item.get('files', {})
+                if 'bandplot_project.json' in files:
+                    desc = item.get('description') or 'Projekt bez nazwy'
+                    if desc.startswith('Band Structure Plotter | '):
+                        desc = desc.split(' | ', 1)[1]
+                    projects.append({
+                        'id': item.get('id', ''),
+                        'name': desc,
+                        'updated_at': item.get('updated_at', ''),
+                        'url': item.get('html_url', ''),
+                    })
+            st.session_state['github_projects'] = projects
+            if projects:
+                st.success(f'Znaleziono {len(projects)} projekt(ów).')
+            else:
+                st.info('Nie znaleziono Gistów zawierających bandplot_project.json.')
+        except Exception as exc:
+            st.error(str(exc))
+
+    projects = st.session_state.get('github_projects', [])
+    selected_gist_id = ''
+    if projects:
+        labels = [f"{p['name']}  |  {p['updated_at'][:10]}  |  {p['id'][:8]}…" for p in projects]
+        selected_label = st.selectbox('Zapisane projekty na GitHub', labels)
+        selected = projects[labels.index(selected_label)]
+        selected_gist_id = selected['id']
+        st.caption(f"Wybrany Gist: {selected['id']}")
+        if selected.get('url'):
+            st.markdown(f"[Otwórz Gist na GitHub]({selected['url']})")
+
+    gist_id = st.text_input(
+        'ID Gista (opcjonalnie: ręcznie, do wczytania lub nadpisania)',
+        value=st.session_state.get('gist_id', ''),
+    )
+    active_gist_id = selected_gist_id or gist_id.strip()
+    c1, c2 = st.columns(2)
+    if c1.button('Wczytaj wybrany projekt z GitHub', disabled=not active_gist_id):
+        try:
+            data = gist_api('GET', f'https://api.github.com/gists/{active_gist_id}', gh_token)
             files = data.get('files', {})
             if 'bandplot_project.json' not in files:
                 raise ValueError('Gist nie zawiera pliku bandplot_project.json')
             project = json.loads(files['bandplot_project.json']['content'])
             load_project_dict(project)
-            st.session_state['gist_id'] = gist_id.strip()
+            st.session_state['gist_id'] = active_gist_id
+            desc = data.get('description') or ''
+            if desc.startswith('Band Structure Plotter | '):
+                st.session_state['project_name'] = desc.split(' | ', 1)[1]
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
@@ -422,7 +477,7 @@ for i, (name, bands) in enumerate(base_datasets.items()):
             base_color = st.color_picker('Kolor noSOC', saved['base_color'], key=f'p_base_color_{name}')
             base_lw = st.slider('Grubość noSOC', 0.2, 3.0, float(saved['base_line_width']), 0.1, key=f'p_base_lw_{name}')
             base_alpha = st.slider('Przezroczystość noSOC', 0.1, 1.0, float(saved['base_alpha']), 0.05, key=f'p_base_alpha_{name}')
-            bsn = st.selectbox('Styl noSOC', line_style_names, index=line_style_names.index(style_name_from_value(saved['base_style'], 'przerywana')), key=f'p_base_style_{name}')
+            bsn = st.selectbox('Styl noSOC', line_style_names, index=line_style_names.index(style_name_from_value(saved['base_style'], 'ciągła')), key=f'p_base_style_{name}')
             base_label = st.text_input('Nazwa w legendzie noSOC', value=saved['base_label'], key=f'p_base_label_{name}')
 
             st.markdown('**Spin-orbita (SOC)**')
@@ -435,7 +490,7 @@ for i, (name, bands) in enumerate(base_datasets.items()):
             soc_color = st.color_picker('Kolor SOC', saved['soc_color'], key=f'p_soc_color_{name}')
             soc_lw = st.slider('Grubość SOC', 0.2, 3.0, float(saved['soc_line_width']), 0.1, key=f'p_soc_lw_{name}')
             soc_alpha = st.slider('Przezroczystość SOC', 0.1, 1.0, float(saved['soc_alpha']), 0.05, key=f'p_soc_alpha_{name}')
-            ssn = st.selectbox('Styl SOC', line_style_names, index=line_style_names.index(style_name_from_value(saved['soc_style'], 'ciągła')), key=f'p_soc_style_{name}')
+            ssn = st.selectbox('Styl SOC', line_style_names, index=line_style_names.index(style_name_from_value(saved['soc_style'], 'przerywana')), key=f'p_soc_style_{name}')
             soc_label = st.text_input('Nazwa w legendzie SOC', value=saved['soc_label'], key=f'p_soc_label_{name}')
 
             st.caption(f'noSOC: {len(bands)} pasm; {len(bands[0])} punktów w pierwszym paśmie.' + (f'  SOC: {len(soc_datasets[soc_name])} pasm.' if soc_name else ''))
@@ -511,17 +566,20 @@ with sc2:
     if st.button('Zapisz projekt do GitHub Gist', disabled=not gh_token.strip()):
         try:
             payload = {
-                'description': 'Band Structure Plotter project',
+                'description': f'Band Structure Plotter | {project_name.strip() or "Mój projekt pasmowy"}',
                 'public': False,
                 'files': {'bandplot_project.json': {'content': project_bytes.decode('utf-8')}},
             }
-            if gist_id.strip():
-                result = gist_api('PATCH', f'https://api.github.com/gists/{gist_id.strip()}', gh_token, payload)
+            save_gist_id = selected_gist_id or gist_id.strip()
+            if save_gist_id:
+                result = gist_api('PATCH', f'https://api.github.com/gists/{save_gist_id}', gh_token, payload)
             else:
                 result = gist_api('POST', 'https://api.github.com/gists', gh_token, payload)
             new_id = result['id']
             st.session_state['gist_id'] = new_id
-            st.success(f'Zapisano. ID Gista: {new_id}')
+            st.session_state['project_name'] = project_name.strip() or 'Mój projekt pasmowy'
+            st.session_state.pop('github_projects', None)
+            st.success(f'Zapisano. ID Gista: {new_id}. Odśwież listę projektów, aby zobaczyć aktualny wpis.')
             st.code(new_id)
         except Exception as exc:
             st.error(str(exc))
